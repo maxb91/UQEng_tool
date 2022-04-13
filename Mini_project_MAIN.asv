@@ -103,7 +103,7 @@ xMC_taub1 = a_fct+u01MC(:,3)*(b_fct-a_fct);
 
 %%  Figure 2
 
-Mini_project_FIG2
+Mini_project_FIG3
 
 
 %%  Figure 3
