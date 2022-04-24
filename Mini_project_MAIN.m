@@ -145,5 +145,55 @@ end
 
 
 %% 2.5 Compute polynomial coefficients
+% PCE coefficients can be obtained from the following equation:
+c=pinv(transpose(Psi)*Psi)*transpose(Psi)*y_ED;
 
+%% 2.6 Numerical Experiments
+%% 2.6.1 Validation: evaluation of the metamodel on a new set of points
+% Number of new sample points
+nv=10E4;
+% Get sampled points in range [0,1]
+u01_val = lhsdesign(nv,M);
+%Create a large validation set XV
+xv_sigsr = sigsr_lim(1)+u01_val(:,1)*(sigsr_lim(2)-sigsr_lim(1));
+xv_srm = srm_lim(1)+u01_val(:,2)*(srm_lim(2)-srm_lim(1));
+xv_taub1 = fct_lim(1)+u01_val(:,3)*(fct_lim(2)-fct_lim(1));
+XV= [xv_sigsr, xv_srm, xv_taub1];
+%% Evaluate the computational model M as well as the metamodel M_PCE on it
+% Computational Model
+y_ED_val=M_avg_strain(xv_sigsr,xv_srm,xv_taub1);
 
+% Value of PCE based on ED
+%y_PCE=0;
+%for i=1:n
+%    y_PCE=y_PCE+c(i)*Psi(i,:);
+%end
+
+%PCE metalmodel
+XV_uniform = XV;
+for i=1:3
+    XV_uniform(:,i) = ((XV(:,i) - sampling_limits(i,1)) / (sampling_limits(i,2)-sampling_limits(i,1)))*2-1;
+end
+% Set up Psi matrix
+Psi_val = ones(nv,P);
+for i=1:n
+    for j=1:P
+        Psi_val(i,j) = eval_legendre(XV_uniform(i,1),p_index(j,1))*...
+                   eval_legendre(XV_uniform(i,2),p_index(j,2))*...
+                   eval_legendre(XV_uniform(i,3),p_index(j,3));
+    end
+end
+c_val=pinv(transpose(Psi_val)*Psi_val)*transpose(Psi_val)*y_ED_val;
+
+% Compare the model responses with the responses of the metamodel for increasing polynomial degrees
+figure;
+% Compute the relative leave-one-out (LOO) error using X_ED
+A=Psi;
+h=diag(A*pinv(transpose(A)*A)*transpose(A));
+epsilon_LOO=0;
+for i=1:n
+    epsilon_LOO=epsilon_LOO+1/n*((y_ED(i)-y_PCE(i))/(1-h(i)))^2;
+end
+% 
+
+%% 2.6.2 Validation: postprocessing of the coefficients
