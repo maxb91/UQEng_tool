@@ -143,13 +143,17 @@ for i=1:n
     end
 end
 
-
 %% 2.5 Compute polynomial coefficients
 % PCE coefficients can be obtained from the following equation:
 c=pinv(transpose(Psi)*Psi)*transpose(Psi)*y_ED;
 
 %% 2.6 Numerical Experiments
 %% 2.6.1 Validation: evaluation of the metamodel on a new set of points
+% Value of PCE from ED
+y_PCE=0;
+for j=1:P
+   y_PCE=y_PCE+c(j)*Psi(:,j);
+end
 % Number of new sample points
 nv=10E4;
 % Get sampled points in range [0,1]
@@ -162,38 +166,144 @@ XV= [xv_sigsr, xv_srm, xv_taub1];
 %% Evaluate the computational model M as well as the metamodel M_PCE on it
 % Computational Model
 y_ED_val=M_avg_strain(xv_sigsr,xv_srm,xv_taub1);
-
-% Value of PCE based on ED
-%y_PCE=0;
-%for i=1:n
-%    y_PCE=y_PCE+c(i)*Psi(i,:);
-%end
-
 %PCE metalmodel
 XV_uniform = XV;
 for i=1:3
     XV_uniform(:,i) = ((XV(:,i) - sampling_limits(i,1)) / (sampling_limits(i,2)-sampling_limits(i,1)))*2-1;
 end
-% Set up Psi matrix
+% Set up Psi matrix based on validation set
 Psi_val = ones(nv,P);
-for i=1:n
+for i=1:nv
     for j=1:P
         Psi_val(i,j) = eval_legendre(XV_uniform(i,1),p_index(j,1))*...
                    eval_legendre(XV_uniform(i,2),p_index(j,2))*...
                    eval_legendre(XV_uniform(i,3),p_index(j,3));
     end
 end
-c_val=pinv(transpose(Psi_val)*Psi_val)*transpose(Psi_val)*y_ED_val;
+% Value of PCE based on validation set 
+y_PCE_val=0;
+for j=1:P
+   y_PCE_val=y_PCE_val+c(j)*Psi_val(:,j);
+end
+%% Compare the model responses with the responses of the metamodel for increasing polynomial degrees
+figure
+hold on
+M_mean = zeros(1,3);
+M_variance=zeros(1,3);
+for p = 1:3 % polynomial degree
+   
+    P = factorial(M+p)/(factorial(M)*factorial(p));% Compute cardinality
+    u01_val = lhsdesign(nv,M);% Get sampled points in range [0,1]
+    
+    %Create a large validation set XV
+    xv_sigsr = sigsr_lim(1)+u01_val(:,1)*(sigsr_lim(2)-sigsr_lim(1));
+    xv_srm = srm_lim(1)+u01_val(:,2)*(srm_lim(2)-srm_lim(1));
+    xv_taub1 = fct_lim(1)+u01_val(:,3)*(fct_lim(2)-fct_lim(1));
+    XV= [xv_sigsr, xv_srm, xv_taub1];
 
-% Compare the model responses with the responses of the metamodel for increasing polynomial degrees
-figure;
-% Compute the relative leave-one-out (LOO) error using X_ED
+    % Computational Model Response
+    y_ED_val=M_avg_strain(xv_sigsr,xv_srm,xv_taub1);
+    %PCE metalmodel
+    XV_uniform = XV;
+    for i=1:3
+        XV_uniform(:,i) = ((XV(:,i) - sampling_limits(i,1)) / (sampling_limits(i,2)-sampling_limits(i,1)))*2-1;
+    end
+    % Get alphas for Legendre polynomials
+    [p_index, p_index_roots] = create_alphas(M, p);
+    % Set up Psi matrix based on validation set
+    Psi_val = ones(nv,P);
+    for i=1:nv
+        for j=1:P
+            Psi_val(i,j) = eval_legendre(XV_uniform(i,1),p_index(j,1))*...
+                eval_legendre(XV_uniform(i,2),p_index(j,2))*...
+                eval_legendre(XV_uniform(i,3),p_index(j,3));
+        end
+    end
+    % Value of PCE based on validation set
+    y_PCE_val=0;
+    for j=1:P
+        y_PCE_val=y_PCE_val+c(j)*Psi_val(:,j);
+    end
+    M_mean(p) = mean(y_ED_val);
+    M_variance(p)=var(y_ED_val);
+    plot(y_ED_val,y_PCE_val,'.')
+end
+legend('p=1','p=2','p=3')  
+title('Comparison of models regarding increasing polynomial degrees')
+ylabel('Computational Model Response')
+xlabel('Metamodel Response')
+hold off
+
+%% Compute the relative leave-one-out (LOO) error using X_ED
 A=Psi;
 h=diag(A*pinv(transpose(A)*A)*transpose(A));
 epsilon_LOO=0;
 for i=1:n
     epsilon_LOO=epsilon_LOO+1/n*((y_ED(i)-y_PCE(i))/(1-h(i)))^2;
+end 
+%% Compute the relative mean-squared error (validation error) evaluated on the validation set XV
+% Validation error
+a=0;
+b=0;
+for i=1:nv
+    a=a+(y_ED_val(i)-y_PCE_val(i)).^2;
+    b=b+(y_ED_val(i)-mean(y_ED_val)).^2;
 end
-% 
-
+epsilon_val=a/b;
+if epsilon_LOO >= epsilon_val
+    fprintf('Leave-one-out error is greater than or equal to validation error.\n')
+else
+    fprintf('Leave-one-out error is smaller than validation error.\n')
+end
 %% 2.6.2 Validation: postprocessing of the coefficients
+% check mean and variance of c
+c_mean=mean(c);
+c_variance=var(c);
+% check mean and variance of M
+%M_mean = mean(y_ED_val);
+%M_variance=var(y_ED_val);
+% PCE mean value
+PCE_mean=c(1);
+PCE_variance=sumsqr(c);
+%% convergence plots for mean and variance regarding polynomial degrees
+moment_mean=zeros(1,3);
+moment_variance=zeros(1,3);
+polynomials=[1,2,3];
+% loop for various p
+for p=1:3
+    moment_mean(p)=M_mean(p)/PCE_mean-1;
+    moment_variance(p)=M_variance(p)/PCE_variance-1;
+end
+figure
+subplot(2,1,1)
+plot(polynomials,moment_mean)
+xlabel('polynomial degree')
+title('Convergence plot for mean')
+subplot(2,1,2)
+plot(polynomials,moment_variance)
+title('Convergence plot for variance')
+xlabel('polynomial degree')
+%% convergence plots for mean and variance regarding number of samples
+i=1;
+% loop for various sample values
+for n_samples=[n,10,1e2,1e3,1e4]
+    u01_n = lhsdesign(n_samples,M);
+    xn_sigsr = sigsr_lim(1)+u01_n(:,1)*(sigsr_lim(2)-sigsr_lim(1));
+    xn_srm = srm_lim(1)+u01_n(:,2)*(srm_lim(2)-srm_lim(1));
+    xn_taub1 = fct_lim(1)+u01_n(:,3)*(fct_lim(2)-fct_lim(1));
+    Xn= [xn_sigsr, xn_srm, xn_taub1];
+    % Computational Model Response
+    y_ED_n=M_avg_strain(xn_sigsr,xn_srm,xn_taub1);
+    M_mean_n(i) = mean(y_ED_n);
+    M_variance_n(i)=var(y_ED_n);
+    i=i+1;
+end
+figure
+subplot(2,1,1)
+plot([n,10,1e2,1e3,1e4],M_mean_n)
+xlabel('number of samples')
+title('Convergence plot for mean')
+subplot(2,1,2)
+plot([n,10,1e2,1e3,1e4],M_variance_n)
+title('Convergence plot for variance')
+xlabel('number of samples')
