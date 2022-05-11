@@ -35,8 +35,12 @@ M_avg_strain = @(sigsr,srm,taub1) sigsr/Es-taub1.*srm/(Es*D)+D./(2*taub1.*srm)*1
 %% 2.2 Probabilistic input model
 
 % Steel stress at the crack
-warning('To be changed')
-sigsr_lim = [585, 595];
+Qmax = 1600; % kN Maximum capacity of the load cell
+acc = 0.001; % RO of the load cell
+Qacc = Qmax*acc; % resolution of load cell
+sigacc = 1e3*Qacc/(pi/4*D^2);
+sigmeas = 590; % Measured value
+sigsr_lim = [sigmeas-sigacc, sigmeas+sigacc];
 
 % Crack spacing
 sr0 = D/4*(1/rho-1); % Maximum crack spacing in mm
@@ -111,9 +115,13 @@ u01MC = rand(n,M);
 xMC_sigsr = sigsr_lim(1)+u01MC(:,1)*(sigsr_lim(2)-sigsr_lim(1));
 xMC_srm = srm_lim(1)+u01MC(:,2)*(srm_lim(2)-srm_lim(1));
 xMC_taub1 = fct_lim(1)+u01MC(:,3)*(fct_lim(2)-fct_lim(1)); 
+XMC = [xMC_sigsr, xMC_srm, xMC_taub1];
 
 %%  Figure 2
 Mini_project_FIG2
+figure
+plotmatrix(X)
+grid on
 
 %%  Figure 3
 Mini_project_FIG3
