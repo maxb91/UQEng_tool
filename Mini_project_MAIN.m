@@ -245,10 +245,13 @@ hold off
 %% Compute the relative leave-one-out (LOO) error using X_ED
 A=Psi;
 h=diag(A*pinv(transpose(A)*A)*transpose(A));
-epsilon_LOO=0;
+E_LOO=0;
+d=0;
 for i=1:n
-    epsilon_LOO=epsilon_LOO+1/n*((y_ED(i)-y_PCE(i))/(1-h(i)))^2;
+    E_LOO=E_LOO+1/n*((y_ED(i)-y_PCE(i))/(1-h(i)))^2;
+    d=d+y_ED(i)-mean(y_ED);
 end 
+epsilon_LOO=E_LOO/d;
 %% Compute the relative mean-squared error (validation error) evaluated on the validation set XV
 % Validation error
 a=0;
@@ -258,7 +261,7 @@ for i=1:nv
     b=b+(y_ED_val(i)-mean(y_ED_val)).^2;
 end
 epsilon_val=a/b;
-if epsilon_LOO >= epsilon_val
+if d >= epsilon_val
     fprintf('Leave-one-out error is greater than or equal to validation error.\n')
 else
     fprintf('Leave-one-out error is smaller than validation error.\n')
@@ -279,8 +282,8 @@ moment_variance=zeros(1,3);
 polynomials=[1,2,3];
 % loop for various p
 for p=1:3
-    moment_mean(p)=M_mean(p)/PCE_mean-1;
-    moment_variance(p)=M_variance(p)/PCE_variance-1;
+    moment_mean(p)=abs(PCE_mean/M_mean(p)-1);
+    moment_variance(p)=abs(PCE_variance/M_variance(p)-1);
 end
 figure
 subplot(2,1,1)
@@ -292,9 +295,12 @@ plot(polynomials,moment_variance)
 title('Convergence plot for variance')
 xlabel('polynomial degree')
 %% convergence plots for mean and variance regarding number of samples
-i=1;
+k=1;
+M_mean_n=zeros(1,7);
+M_variance_n=zeros(1,7);
 % loop for various sample values
-for n_samples=[n,10,1e2,1e3,1e4]
+for n_samples=[n,10,1e2,1e3,1e4,1e5,1e6]
+    P = factorial(M+p)/(factorial(M)*factorial(p));% Compute cardinality
     u01_n = lhsdesign(n_samples,M);
     xn_sigsr = sigsr_lim(1)+u01_n(:,1)*(sigsr_lim(2)-sigsr_lim(1));
     xn_srm = srm_lim(1)+u01_n(:,2)*(srm_lim(2)-srm_lim(1));
@@ -302,16 +308,41 @@ for n_samples=[n,10,1e2,1e3,1e4]
     Xn= [xn_sigsr, xn_srm, xn_taub1];
     % Computational Model Response
     y_ED_n=M_avg_strain(xn_sigsr,xn_srm,xn_taub1);
-    M_mean_n(i) = mean(y_ED_n);
-    M_variance_n(i)=var(y_ED_n);
-    i=i+1;
+    %PCE metalmodel
+    XV_n = Xn;
+    for i=1:3
+        XV_n(:,i) = ((Xn(:,i) - sampling_limits(i,1)) / (sampling_limits(i,2)-sampling_limits(i,1)))*2-1;
+    end
+    % Get alphas for Legendre polynomials
+    [p_index, p_index_roots] = create_alphas(M, p);
+    % Set up Psi matrix based on validation set
+    Psi_n = ones(n_samples,P);
+    for i=1:n_samples
+        for j=1:P
+            Psi_n(i,j) = eval_legendre(XV_n(i,1),p_index(j,1))*...
+                eval_legendre(XV_n(i,2),p_index(j,2))*...
+                eval_legendre(XV_n(i,3),p_index(j,3));
+        end
+    end
+    c=pinv(transpose(Psi_n)*Psi_n)*transpose(Psi_n)*y_ED_n;
+    % Value of PCE based on validation set
+    y_PCE_n=0;
+    for j=1:P
+        y_PCE_n=y_PCE_n+c(j)*Psi_val(:,j);
+    end
+    
+    PCE_mean=c(1);
+    PCE_variance=sumsqr(c);
+    M_mean_n(k) = abs(PCE_mean/mean(y_ED_n)-1);
+    M_variance_n(k)=abs(PCE_variance/var(y_ED_n)-1);
+    k=k+1;
 end
 figure
 subplot(2,1,1)
-plot([n,10,1e2,1e3,1e4],M_mean_n)
+plot([n,10,1e2,1e3,1e4,1e5,1e6],M_mean_n)
 xlabel('number of samples')
 title('Convergence plot for mean')
 subplot(2,1,2)
-plot([n,10,1e2,1e3,1e4],M_variance_n)
+plot([n,10,1e2,1e3,1e4,1e5,1e6],M_variance_n)
 title('Convergence plot for variance')
 xlabel('number of samples')
