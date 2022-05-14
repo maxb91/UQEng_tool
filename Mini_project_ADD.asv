@@ -1,0 +1,23 @@
+%% Coefficients
+pol_degree = sum(p_index,2);
+markers = {'o','s','d','^','*'};
+
+coltemp = bone(p+1);
+cols = coltemp(end-1:-1:1,:);
+
+figure
+hold on
+grid on
+box on
+    for i=1:p
+        coeff_indices = find(pol_degree == p+1-i);
+        SC(p+1-i)=scatter(coeff_indices,abs(c(coeff_indices)/c(1)),...
+            [],'MarkerEdgeColor',[0 0 0,'markerfacecolor',cols(i,:),markers{i});
+    end
+set(gca,'YScale','log')
+legend(SC,{'First order','Second order','Third order','Fourth order'})
+
+
+%% Computation times
+
+% e.g. compared to MC

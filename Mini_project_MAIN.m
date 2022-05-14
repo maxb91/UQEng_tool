@@ -88,14 +88,14 @@ Mini_project_FIG1
 
 %% 2.3 Sampling the experimental design
 % Latin hypercube sampling
-p = 3; % polynomial degree
+p = 4; % polynomial degree
 M = 3; % 3 uncertain variables
 
 % Compute cardinality:
 P = factorial(M+p)/(factorial(M)*factorial(p));
 
-k = 2; % oversampling rate
-n = k*P; % resulting number of samples
+kk = 3; % oversampling rate
+n = kk*P; % resulting number of samples
 
 % Get sampled points in range [0,1]
 u01 = lhsdesign(n,M);
@@ -195,54 +195,86 @@ y_PCE_val=0;
 for j=1:P
    y_PCE_val=y_PCE_val+c(j)*Psi_val(:,j);
 end
-%% Compare the model responses with the responses of the metamodel for increasing polynomial degrees
-figure
-hold on
-M_mean = zeros(1,3);
-M_variance=zeros(1,3);
-for p = 1:3 % polynomial degree
-   
-    P = factorial(M+p)/(factorial(M)*factorial(p));% Compute cardinality
-    u01_val = lhsdesign(nv,M);% Get sampled points in range [0,1]
-    
-    %Create a large validation set XV
-    xv_sigsr = sigsr_lim(1)+u01_val(:,1)*(sigsr_lim(2)-sigsr_lim(1));
-    xv_srm = srm_lim(1)+u01_val(:,2)*(srm_lim(2)-srm_lim(1));
-    xv_taub1 = tau_lim(1)+u01_val(:,3)*(tau_lim(2)-tau_lim(1));
-    XV= [xv_sigsr, xv_srm, xv_taub1];
 
-    % Computational Model Response
-    y_ED_val=M_avg_strain(xv_sigsr,xv_srm,xv_taub1);
-    %PCE metalmodel
-    XV_uniform = XV;
+
+% figure
+% plot(y_ED_val,y_PCE_val,'.')
+% 
+% 
+% figure
+% plot(y_ED,y_PCE,'.')
+%% Compare the model responses with the responses of the metamodel for increasing polynomial degrees
+degrees = 1:5;
+incdeg = arrayfun(@(x)struct('p',x),degrees);
+for pp = degrees % polynomial degree
+    tic;
+    % FIRST CREATE PCE MODEL OF DEGREE p
+    incdeg(pp).P = factorial(M+pp)/(factorial(M)*factorial(pp));% Compute cardinality
+    incdeg(pp).n = kk*incdeg(pp).P; % resulting number of samples
+
+    % Get sampled points in range [0,1]
+    incdeg(pp).u01 = lhsdesign(incdeg(pp).n,M);
+
+    % Transform -- Experimental design
+    incdeg(pp).x_sigsr = sigsr_lim(1)+incdeg(pp).u01(:,1)*(sigsr_lim(2)-sigsr_lim(1));
+    incdeg(pp).x_srm = srm_lim(1)+incdeg(pp).u01(:,2)*(srm_lim(2)-srm_lim(1));
+    incdeg(pp).x_taub1 = tau_lim(1)+incdeg(pp).u01(:,3)*(tau_lim(2)-tau_lim(1)); % According to TCM (Alvarez 1998): taub1 = fct
+    incdeg(pp).X = [incdeg(pp).x_sigsr, incdeg(pp).x_srm, incdeg(pp).x_taub1];
+    incdeg(pp).y_ED  =M_avg_strain(incdeg(pp).x_sigsr,incdeg(pp).x_srm,incdeg(pp).x_taub1);
+    
+    % Transform to [-1,1] for Legendre
+    incdeg(pp).X_uniform = incdeg(pp).X;
     for i=1:3
-        XV_uniform(:,i) = ((XV(:,i) - sampling_limits(i,1)) / (sampling_limits(i,2)-sampling_limits(i,1)))*2-1;
+        incdeg(pp).X_uniform(:,i) = ((incdeg(pp).X(:,i) - sampling_limits(i,1)) / (sampling_limits(i,2)-sampling_limits(i,1)))*2-1;
     end
+
     % Get alphas for Legendre polynomials
-    [p_index, p_index_roots] = create_alphas(M, p);
-    % Set up Psi matrix based on validation set
-    Psi_val = ones(nv,P);
-    for i=1:nv
-        for j=1:P
-            Psi_val(i,j) = eval_legendre(XV_uniform(i,1),p_index(j,1))*...
-                eval_legendre(XV_uniform(i,2),p_index(j,2))*...
-                eval_legendre(XV_uniform(i,3),p_index(j,3));
+    [incdeg(pp).p_index, incdeg(pp).p_index_roots] = create_alphas(M, pp);
+
+    % Set up Psi matrix
+    incdeg(pp).Psi = ones(incdeg(pp).n,incdeg(pp).P);
+    for i=1:incdeg(pp).n
+        for j=1:incdeg(pp).P
+            % For each element of the matrix, compute the multivariate basis by
+            % a product of the univariate ones:
+            incdeg(pp).Psi(i,j) = eval_legendre(incdeg(pp).X_uniform(i,1),incdeg(pp).p_index(j,1))*...
+                eval_legendre(incdeg(pp).X_uniform(i,2),incdeg(pp).p_index(j,2))*...
+                eval_legendre(incdeg(pp).X_uniform(i,3),incdeg(pp).p_index(j,3));
         end
     end
-    % Value of PCE based on validation set
-    y_PCE_val=0;
-    for j=1:P
-        y_PCE_val=y_PCE_val+c(j)*Psi_val(:,j);
+
+    % PCE coefficients can be obtained from the following equation:
+    incdeg(pp).c=pinv(transpose(incdeg(pp).Psi)*incdeg(pp).Psi)*transpose(incdeg(pp).Psi)*incdeg(pp).y_ED;
+
+    % SECOND: EVALUATE THE PCE MODEL ON VALIDTION SAMPLE   
+
+    % Set up Psi matrix based on validation set (always the same validation
+    % set)
+    incdeg(pp).Psi_val = ones(nv,incdeg(pp).P);
+    for i=1:nv
+        for j=1:incdeg(pp).P
+            incdeg(pp).Psi_val(i,j) = eval_legendre(XV_uniform(i,1),incdeg(pp).p_index(j,1))*...
+                eval_legendre(XV_uniform(i,2),incdeg(pp).p_index(j,2))*...
+                eval_legendre(XV_uniform(i,3),incdeg(pp).p_index(j,3));
+        end
     end
-    M_mean(p) = mean(y_ED_val);
-    M_variance(p)=var(y_ED_val);
-    plot(y_ED_val,y_PCE_val,'.')
+
+    % Value of PCE based on validation set
+    incdeg(pp).y_PCE_val=0;
+    for j=1:incdeg(pp).P
+        incdeg(pp).y_PCE_val=incdeg(pp).y_PCE_val+incdeg(pp).c(j)*incdeg(pp).Psi_val(:,j);
+    end
+    incdeg(pp).mu_PCE = mean(incdeg(pp).y_PCE_val);
+    incdeg(pp).var_PCE=var(incdeg(pp).y_PCE_val);
+    incdeg(pp).t=toc;
+    fprintf('PCE with degree %i done, mu = %4.4f, var = %4.4e, t = %4.2f \n',pp,incdeg(pp).mu_PCE,incdeg(pp).var_PCE,incdeg(pp).t)
 end
-legend('p=1','p=2','p=3')  
-title('Comparison of models regarding increasing polynomial degrees')
-ylabel('Computational Model Response')
-xlabel('Metamodel Response')
-hold off
+
+%% Figure 4 - Comparison degrees
+
+Mini_project_FIG4
+Mini_project_FIG4b
+Mini_project_FIG4c % This one is the best, right?
 
 %% Compute the relative leave-one-out (LOO) error using X_ED
 A=Psi;
@@ -251,100 +283,144 @@ E_LOO=0;
 d=0;
 for i=1:n
     E_LOO=E_LOO+1/n*((y_ED(i)-y_PCE(i))/(1-h(i)))^2;
-    d=d+y_ED(i)-mean(y_ED);
+    d=d+(y_ED(i)-y_ED_mean)^2;
 end 
 epsilon_LOO=E_LOO/d;
+
 %% Compute the relative mean-squared error (validation error) evaluated on the validation set XV
 % Validation error
 a=0;
 b=0;
+mu_M = mean(y_ED_val);
 for i=1:nv
     a=a+(y_ED_val(i)-y_PCE_val(i)).^2;
-    b=b+(y_ED_val(i)-mean(y_ED_val)).^2;
+    b=b+(y_ED_val(i)-mu_M).^2;
 end
 epsilon_val=a/b;
-if d >= epsilon_val
+if epsilon_LOO >= epsilon_val
     fprintf('Leave-one-out error is greater than or equal to validation error.\n')
 else
-    fprintf('Leave-one-out error is smaller than validation error.\n')
+    fprintf('Leave-one-out error is smaller than validation error.\n\n')
 end
 %% 2.6.2 Validation: postprocessing of the coefficients
-% check mean and variance of c
-c_mean=mean(c);
-c_variance=var(c);
 % check mean and variance of M
-%M_mean = mean(y_ED_val);
-%M_variance=var(y_ED_val);
+% mu_M defined before
+var_M=var(y_ED_val);
 % PCE mean value
-PCE_mean=c(1);
-PCE_variance=sumsqr(c);
+mu_PCE=c(1);
+var_PCE=sum(c(2:end).*c(2:end));
+fprintf('Comparison of the mean value\n')
+fprintf('mu_M = %4.4f \n',mu_M)
+fprintf('mu_PCE = %4.4f \n',mu_PCE)
+fprintf('Comparison of the variance\n')
+fprintf('var_M = %4.4e \n',var_M)
+fprintf('var_PCE = %4.4e \n\n',var_PCE)
 %% convergence plots for mean and variance regarding polynomial degrees
-moment_mean=zeros(1,3);
-moment_variance=zeros(1,3);
-polynomials=[1,2,3];
-% loop for various p
-for p=1:3
-    moment_mean(p)=abs(PCE_mean/M_mean(p)-1);
-    moment_variance(p)=abs(PCE_variance/M_variance(p)-1);
-end
+
+polynomials=degrees;
+
+
+moment_mean=abs([incdeg.mu_PCE]/mu_M-1);
+moment_variance=abs([incdeg.var_PCE]/var_M-1);
+
+
 figure
-subplot(2,1,1)
-plot(polynomials,moment_mean)
-xlabel('polynomial degree')
-title('Convergence plot for mean')
-subplot(2,1,2)
-plot(polynomials,moment_variance)
-title('Convergence plot for variance')
-xlabel('polynomial degree')
+hold on
+box on
+grid on
+plot(polynomials,moment_mean,'k-o')
+plot(polynomials,moment_variance,'-s','color',[0.7 0.7 0.7])
+legend('Mean value','Variance')
+xlabel('polynomial degree {\it p}')
+ylabel('Relative error')
+set(gca,'yscale','log')
+
+
 %% convergence plots for mean and variance regarding number of samples
-k=1;
-M_mean_n=zeros(1,7);
-M_variance_n=zeros(1,7);
-% loop for various sample values
-for n_samples=[n,10,1e2,1e3,1e4,1e5,1e6]
-    P = factorial(M+p)/(factorial(M)*factorial(p));% Compute cardinality
-    u01_n = lhsdesign(n_samples,M);
-    xn_sigsr = sigsr_lim(1)+u01_n(:,1)*(sigsr_lim(2)-sigsr_lim(1));
-    xn_srm = srm_lim(1)+u01_n(:,2)*(srm_lim(2)-srm_lim(1));
-    xn_taub1 = tau_lim(1)+u01_n(:,3)*(tau_lim(2)-tau_lim(1));
-    Xn= [xn_sigsr, xn_srm, xn_taub1];
-    % Computational Model Response
-    y_ED_n=M_avg_strain(xn_sigsr,xn_srm,xn_taub1);
-    %PCE metalmodel
-    XV_n = Xn;
+p = 4;
+oversampling = 0.5:0.5:4;
+incn = arrayfun(@(x)struct('oversampling',x),oversampling);
+for kk = 1:length(oversampling) % polynomial degree
+    tic;
+    incn(kk).total_degree = p;
+
+    % FIRST CREATE PCE MODEL OF DEGREE p
+    incn(kk).P = factorial(M+p)/(factorial(M)*factorial(p));% Compute cardinality
+    incn(kk).n = ceil(incn(kk).oversampling*incn(kk).P); % resulting number of samples
+
+    % Get sampled points in range [0,1]
+    incn(kk).u01 = lhsdesign(incn(kk).n,M);
+
+    % Transform -- Experimental design
+    incn(kk).x_sigsr = sigsr_lim(1)+incn(kk).u01(:,1)*(sigsr_lim(2)-sigsr_lim(1));
+    incn(kk).x_srm = srm_lim(1)+incn(kk).u01(:,2)*(srm_lim(2)-srm_lim(1));
+    incn(kk).x_taub1 = tau_lim(1)+incn(kk).u01(:,3)*(tau_lim(2)-tau_lim(1)); % According to TCM (Alvarez 1998): taub1 = fct
+    incn(kk).X = [incn(kk).x_sigsr, incn(kk).x_srm, incn(kk).x_taub1];
+    incn(kk).y_ED  =M_avg_strain(incn(kk).x_sigsr,incn(kk).x_srm,incn(kk).x_taub1);
+    
+    % Transform to [-1,1] for Legendre
+    incn(kk).X_uniform = incn(kk).X;
     for i=1:3
-        XV_n(:,i) = ((Xn(:,i) - sampling_limits(i,1)) / (sampling_limits(i,2)-sampling_limits(i,1)))*2-1;
+        incn(kk).X_uniform(:,i) = ((incn(kk).X(:,i) - sampling_limits(i,1)) / (sampling_limits(i,2)-sampling_limits(i,1)))*2-1;
     end
+
     % Get alphas for Legendre polynomials
-    [p_index, p_index_roots] = create_alphas(M, p);
-    % Set up Psi matrix based on validation set
-    Psi_n = ones(n_samples,P);
-    for i=1:n_samples
-        for j=1:P
-            Psi_n(i,j) = eval_legendre(XV_n(i,1),p_index(j,1))*...
-                eval_legendre(XV_n(i,2),p_index(j,2))*...
-                eval_legendre(XV_n(i,3),p_index(j,3));
+    [incn(kk).p_index, incn(kk).p_index_roots] = create_alphas(M, p);
+
+    % Set up Psi matrix
+    incn(kk).Psi = ones(incn(kk).n,incn(kk).P);
+    for i=1:incn(kk).n
+        for j=1:incn(kk).P
+            % For each element of the matrix, compute the multivariate basis by
+            % a product of the univariate ones:
+            incn(kk).Psi(i,j) = eval_legendre(incn(kk).X_uniform(i,1),incn(kk).p_index(j,1))*...
+                eval_legendre(incn(kk).X_uniform(i,2),incn(kk).p_index(j,2))*...
+                eval_legendre(incn(kk).X_uniform(i,3),incn(kk).p_index(j,3));
         end
     end
-    c=pinv(transpose(Psi_n)*Psi_n)*transpose(Psi_n)*y_ED_n;
-    % Value of PCE based on validation set
-    y_PCE_n=0;
-    for j=1:P
-        y_PCE_n=y_PCE_n+c(j)*Psi_val(:,j);
+
+    % PCE coefficients can be obtained from the following equation:
+    incn(kk).c=pinv(transpose(incn(kk).Psi)*incn(kk).Psi)*transpose(incn(kk).Psi)*incn(kk).y_ED;
+
+    % SECOND: EVALUATE THE PCE MODEL ON VALIDTION SAMPLE   
+
+    % Set up Psi matrix based on validation set (always the same validation
+    % set)
+    incn(kk).Psi_val = ones(nv,incn(kk).P);
+    for i=1:nv
+        for j=1:incn(kk).P
+            incn(kk).Psi_val(i,j) = eval_legendre(XV_uniform(i,1),incn(kk).p_index(j,1))*...
+                eval_legendre(XV_uniform(i,2),incn(kk).p_index(j,2))*...
+                eval_legendre(XV_uniform(i,3),incn(kk).p_index(j,3));
+        end
     end
-    
-    PCE_mean=c(1);
-    PCE_variance=sumsqr(c);
-    M_mean_n(k) = abs(PCE_mean/mean(y_ED_n)-1);
-    M_variance_n(k)=abs(PCE_variance/var(y_ED_n)-1);
-    k=k+1;
+
+    % Value of PCE based on validation set
+    incn(kk).y_PCE_val=0;
+    for j=1:incn(kk).P
+        incn(kk).y_PCE_val=incn(kk).y_PCE_val+incn(kk).c(j)*incn(kk).Psi_val(:,j);
+    end
+    incn(kk).mu_PCE = mean(incn(kk).y_PCE_val);
+    incn(kk).var_PCE=var(incn(kk).y_PCE_val);
+    incn(kk).t=toc;
+    fprintf('PCE with experimental design of %i samples done, mu = %4.4f, var = %4.4e, t = %4.2f \n',incn(kk).n,incn(kk).mu_PCE,incn(kk).var_PCE,incn(kk).t)
 end
+
+rel_error_n_mu = abs([incn.mu_PCE]./mu_M-1);
+rel_error_n_var = abs([incn.var_PCE]./var_M-1);
+
 figure
-subplot(2,1,1)
-plot([n,10,1e2,1e3,1e4,1e5,1e6],M_mean_n)
-xlabel('number of samples')
-title('Convergence plot for mean')
-subplot(2,1,2)
-plot([n,10,1e2,1e3,1e4,1e5,1e6],M_variance_n)
-title('Convergence plot for variance')
-xlabel('number of samples')
+hold on
+box on
+grid on
+plot([incn.n],rel_error_n_mu,'k-o')
+plot([incn.n],rel_error_n_var,'-s','color',[0.7 0.7 0.7])
+legend('Mean value','Variance')
+xlabel('Number of samples in the experimental design {\it n}')
+ylabel('Relative error')
+set(gca,'yscale','log')
+
+
+%% Possible additional evaluation / postprocessing
+
+Mini_project_ADD
