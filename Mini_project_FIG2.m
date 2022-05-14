@@ -25,7 +25,7 @@ F2.p(2) = plot(x_srm,x_taub1,'ko',...
 xlabel('s_{rm} [mm]')
 xlim([srm_lim(1),srm_lim(2)]);
 ylabel('\tau_{b1} [MPa]')
-ylim([fct_lim(1),fct_lim(2)]);
+ylim([tau_lim(1),tau_lim(2)]);
 
 
 F2.ax(3) = subplot(1,3,3);
@@ -35,6 +35,6 @@ hold on
 F2.p(2) = plot(x_taub1,x_sigsr,'ko',...
     'Markersize',2);
 xlabel('\tau_{b1} [MPa]')
-xlim([fct_lim(1),fct_lim(2)]);
+xlim([tau_lim(1),tau_lim(2)]);
 ylabel('\sigma_{sr} [MPa]')
 ylim([sigsr_lim(1),sigsr_lim(2)])

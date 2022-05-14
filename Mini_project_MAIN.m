@@ -35,10 +35,11 @@ M_avg_strain = @(sigsr,srm,taub1) sigsr/Es-taub1.*srm/(Es*D)+D./(2*taub1.*srm)*1
 %% 2.2 Probabilistic input model
 
 % Steel stress at the crack
-Qmax = 1600; % kN Maximum capacity of the load cell
+Qrange = 900; % kN Range of the load cell
 acc = 0.001; % RO of the load cell
-Qacc = Qmax*acc; % resolution of load cell
-sigacc = 1e3*Qacc/(pi/4*D^2);
+Qacc = Qrange*acc; % resolution of load cell
+sigacc = 1e3*Qacc/(pi/4*D^2); % Assuming mu+sigacc = 95% quantile
+stdev_sig = sigacc/norminv(0.95);
 sigmeas = 590; % Measured value
 sigsr_lim = [sigmeas-sigacc, sigmeas+sigacc];
 
@@ -73,19 +74,20 @@ fct_zeta = 2/3*lambdaJCSS*fc_zeta+2/3*Y1_zeta+Y2_zeta;
 fct_lambda = 2/3*lambdaJCSS*fc_lambda+2/3*Y1_lambda+Y2_lambda+log(0.3);
 fct_mean = exp(fct_lambda+fct_zeta^2/2);
 fct_std = exp(fct_lambda+fct_zeta^2/2)*sqrt(exp(fct_zeta^2)-1);
-warning('to be discussed')
-fct_lim = [fct_mean - fct_std,  fct_mean + fct_std];
+b_tau = exp(norminv(0.95)*fct_zeta+fct_lambda);
+a_tau = exp(norminv(0.05)*fct_zeta+fct_lambda);
+
+tau_lim = [a_tau,  b_tau];
 
 sampling_limits = [sigsr_lim;
                    srm_lim;
-                   fct_lim];
+                   tau_lim];
 
 %%  Figure 1
 Mini_project_FIG1
 
 %% 2.3 Sampling the experimental design
 % Latin hypercube sampling
-warning('??')
 p = 3; % polynomial degree
 M = 3; % 3 uncertain variables
 
@@ -101,7 +103,7 @@ u01 = lhsdesign(n,M);
 % Transform -- Experimental design
 x_sigsr = sigsr_lim(1)+u01(:,1)*(sigsr_lim(2)-sigsr_lim(1));
 x_srm = srm_lim(1)+u01(:,2)*(srm_lim(2)-srm_lim(1));
-x_taub1 = fct_lim(1)+u01(:,3)*(fct_lim(2)-fct_lim(1)); % According to TCM (Alvarez 1998): taub1 = fct
+x_taub1 = tau_lim(1)+u01(:,3)*(tau_lim(2)-tau_lim(1)); % According to TCM (Alvarez 1998): taub1 = fct
 X = [x_sigsr, x_srm, x_taub1];
 
 % Evaluation of the full model on the experimental design
@@ -114,7 +116,7 @@ y_ED_var = y_ED_std^2;
 u01MC = rand(n,M);
 xMC_sigsr = sigsr_lim(1)+u01MC(:,1)*(sigsr_lim(2)-sigsr_lim(1));
 xMC_srm = srm_lim(1)+u01MC(:,2)*(srm_lim(2)-srm_lim(1));
-xMC_taub1 = fct_lim(1)+u01MC(:,3)*(fct_lim(2)-fct_lim(1)); 
+xMC_taub1 = tau_lim(1)+u01MC(:,3)*(tau_lim(2)-tau_lim(1)); 
 XMC = [xMC_sigsr, xMC_srm, xMC_taub1];
 
 %%  Figure 2
@@ -169,7 +171,7 @@ u01_val = lhsdesign(nv,M);
 %Create a large validation set XV
 xv_sigsr = sigsr_lim(1)+u01_val(:,1)*(sigsr_lim(2)-sigsr_lim(1));
 xv_srm = srm_lim(1)+u01_val(:,2)*(srm_lim(2)-srm_lim(1));
-xv_taub1 = fct_lim(1)+u01_val(:,3)*(fct_lim(2)-fct_lim(1));
+xv_taub1 = tau_lim(1)+u01_val(:,3)*(tau_lim(2)-tau_lim(1));
 XV= [xv_sigsr, xv_srm, xv_taub1];
 %% Evaluate the computational model M as well as the metamodel M_PCE on it
 % Computational Model
@@ -206,7 +208,7 @@ for p = 1:3 % polynomial degree
     %Create a large validation set XV
     xv_sigsr = sigsr_lim(1)+u01_val(:,1)*(sigsr_lim(2)-sigsr_lim(1));
     xv_srm = srm_lim(1)+u01_val(:,2)*(srm_lim(2)-srm_lim(1));
-    xv_taub1 = fct_lim(1)+u01_val(:,3)*(fct_lim(2)-fct_lim(1));
+    xv_taub1 = tau_lim(1)+u01_val(:,3)*(tau_lim(2)-tau_lim(1));
     XV= [xv_sigsr, xv_srm, xv_taub1];
 
     % Computational Model Response
@@ -304,7 +306,7 @@ for n_samples=[n,10,1e2,1e3,1e4,1e5,1e6]
     u01_n = lhsdesign(n_samples,M);
     xn_sigsr = sigsr_lim(1)+u01_n(:,1)*(sigsr_lim(2)-sigsr_lim(1));
     xn_srm = srm_lim(1)+u01_n(:,2)*(srm_lim(2)-srm_lim(1));
-    xn_taub1 = fct_lim(1)+u01_n(:,3)*(fct_lim(2)-fct_lim(1));
+    xn_taub1 = tau_lim(1)+u01_n(:,3)*(tau_lim(2)-tau_lim(1));
     Xn= [xn_sigsr, xn_srm, xn_taub1];
     % Computational Model Response
     y_ED_n=M_avg_strain(xn_sigsr,xn_srm,xn_taub1);
