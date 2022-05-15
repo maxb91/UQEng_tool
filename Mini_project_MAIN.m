@@ -94,8 +94,8 @@ M = 3; % 3 uncertain variables
 % Compute cardinality:
 P = factorial(M+p)/(factorial(M)*factorial(p));
 
-kk = 3; % oversampling rate
-n = kk*P; % resulting number of samples
+k = 3; % oversampling rate
+n = k*P; % resulting number of samples
 
 % Get sampled points in range [0,1]
 u01 = lhsdesign(n,M);
@@ -210,7 +210,7 @@ for pp = degrees % polynomial degree
     tic;
     % FIRST CREATE PCE MODEL OF DEGREE p
     incdeg(pp).P = factorial(M+pp)/(factorial(M)*factorial(pp));% Compute cardinality
-    incdeg(pp).n = kk*incdeg(pp).P; % resulting number of samples
+    incdeg(pp).n = k*incdeg(pp).P; % resulting number of samples
 
     % Get sampled points in range [0,1]
     incdeg(pp).u01 = lhsdesign(incdeg(pp).n,M);
@@ -245,6 +245,14 @@ for pp = degrees % polynomial degree
 
     % PCE coefficients can be obtained from the following equation:
     incdeg(pp).c=pinv(transpose(incdeg(pp).Psi)*incdeg(pp).Psi)*transpose(incdeg(pp).Psi)*incdeg(pp).y_ED;
+    
+    incdeg(pp).t=toc;
+
+    % Evaluate PCE on ED
+    incdeg(pp).y_PCE=0;
+    for j=1:incdeg(pp).P
+        incdeg(pp).y_PCE=incdeg(pp).y_PCE+incdeg(pp).c(j)*incdeg(pp).Psi(:,j);
+    end
 
     % SECOND: EVALUATE THE PCE MODEL ON VALIDTION SAMPLE   
 
@@ -266,8 +274,22 @@ for pp = degrees % polynomial degree
     end
     incdeg(pp).mu_PCE = mean(incdeg(pp).y_PCE_val);
     incdeg(pp).var_PCE=var(incdeg(pp).y_PCE_val);
-    incdeg(pp).t=toc;
+    
     fprintf('PCE with degree %i done, mu = %4.4f, var = %4.4e, t = %4.2f \n',pp,incdeg(pp).mu_PCE,incdeg(pp).var_PCE,incdeg(pp).t)
+end
+
+for pp = 1:length(degrees)
+    incdeg(pp).muhat_PCE = incdeg(pp).c(1);
+    incdeg(pp).varhat_PCE =sum(incdeg(pp).c(2:end).*incdeg(pp).c(2:end));
+    incdeg(pp).cvhat_PCE =sqrt(incdeg(pp).varhat_PCE)/incdeg(pp).muhat_PCE;
+    incdeg(pp).h=diag(incdeg(pp).Psi*pinv(transpose(incdeg(pp).Psi)*incdeg(pp).Psi)*transpose(incdeg(pp).Psi));
+    incdeg(pp).epsLOO = (1./incdeg(pp).n).*...
+        sum(((incdeg(pp).y_ED-incdeg(pp).y_PCE)./(1-incdeg(pp).h)).^2)./...
+        sum((incdeg(pp).y_ED-mean(incdeg(pp).y_ED)).^2);
+    incdeg(pp).epsMSQ = sum((y_ED_val-incdeg(pp).y_PCE_val).^2)./...
+        sum((y_ED_val-mean(y_ED_val)).^2);
+    incdeg(pp).epsMSQ_ED = sum((incdeg(pp).y_ED-incdeg(pp).y_PCE).^2)./...
+        sum((incdeg(pp).y_ED-mean(incdeg(pp).y_ED)).^2);
 end
 
 %% Figure 4 - Comparison degrees
@@ -286,6 +308,10 @@ for i=1:n
     d=d+(y_ED(i)-y_ED_mean)^2;
 end 
 epsilon_LOO=E_LOO/d;
+
+epsLOO = (1./n).*...
+        sum(((y_ED-y_PCE)./(1-h)).^2)./...
+        sum((y_ED-mean(y_ED)).^2);
 
 %% Compute the relative mean-squared error (validation error) evaluated on the validation set XV
 % Validation error
@@ -340,7 +366,7 @@ set(gca,'yscale','log')
 p = 4;
 oversampling = 0.5:0.5:4;
 incn = arrayfun(@(x)struct('oversampling',x),oversampling);
-for kk = 1:length(oversampling) % polynomial degree
+for kk = 1:length(oversampling) 
     tic;
     incn(kk).total_degree = p;
 
@@ -376,12 +402,20 @@ for kk = 1:length(oversampling) % polynomial degree
             incn(kk).Psi(i,j) = eval_legendre(incn(kk).X_uniform(i,1),incn(kk).p_index(j,1))*...
                 eval_legendre(incn(kk).X_uniform(i,2),incn(kk).p_index(j,2))*...
                 eval_legendre(incn(kk).X_uniform(i,3),incn(kk).p_index(j,3));
-        end
+        end 
     end
 
     % PCE coefficients can be obtained from the following equation:
     incn(kk).c=pinv(transpose(incn(kk).Psi)*incn(kk).Psi)*transpose(incn(kk).Psi)*incn(kk).y_ED;
 
+    incn(kk).t=toc;
+
+    % Evaluate PCE on ED
+    incn(kk).y_PCE=0;
+    for j=1:incn(kk).P
+        incn(kk).y_PCE=incn(kk).y_PCE+incn(kk).c(j)*incn(kk).Psi(:,j);
+    end
+    
     % SECOND: EVALUATE THE PCE MODEL ON VALIDTION SAMPLE   
 
     % Set up Psi matrix based on validation set (always the same validation
@@ -402,8 +436,23 @@ for kk = 1:length(oversampling) % polynomial degree
     end
     incn(kk).mu_PCE = mean(incn(kk).y_PCE_val);
     incn(kk).var_PCE=var(incn(kk).y_PCE_val);
-    incn(kk).t=toc;
+    
     fprintf('PCE with experimental design of %i samples done, mu = %4.4f, var = %4.4e, t = %4.2f \n',incn(kk).n,incn(kk).mu_PCE,incn(kk).var_PCE,incn(kk).t)
+end
+
+for kk = 1:length(oversampling)
+        % Evaluate PCE on ED
+    incn(kk).muhat_PCE = incn(kk).c(1);
+    incn(kk).varhat_PCE =sum(incn(kk).c(2:end).*incn(kk).c(2:end));
+    incn(kk).cvhat_PCE =sqrt(incn(kk).varhat_PCE)/incn(kk).muhat_PCE;
+    incn(kk).h=diag(incn(kk).Psi*pinv(transpose(incn(kk).Psi)*incn(kk).Psi)*transpose(incn(kk).Psi));
+    incn(kk).epsLOO = (1./incn(kk).n).*...
+        sum(((incn(kk).y_ED-incn(kk).y_PCE)./(1-incn(kk).h)).^2)./...
+        sum((incn(kk).y_ED-mean(incn(kk).y_ED)).^2);
+    incn(kk).epsMSQ = sum((y_ED_val-incn(kk).y_PCE_val).^2)./...
+        sum((y_ED_val-mean(y_ED_val)).^2);
+    incn(kk).epsMSQ_ED = sum((incn(kk).y_ED-incn(kk).y_PCE).^2)./...
+        sum((incn(kk).y_ED-mean(incn(kk).y_ED)).^2);
 end
 
 rel_error_n_mu = abs([incn.mu_PCE]./mu_M-1);
@@ -419,8 +468,28 @@ legend('Mean value','Variance')
 xlabel('Number of samples in the experimental design {\it n}')
 ylabel('Relative error')
 set(gca,'yscale','log')
+Mini_project_FIG5
 
-
+%% "Exact value" of mu, sigma
+tic;
+% Number of new sample points
+ns=1E6;
+% Get sampled points in range [0,1]
+u01_s = lhsdesign(ns,M);
+%Create a large validation set XV
+xvs_sigsr = sigsr_lim(1)+u01_s(:,1)*(sigsr_lim(2)-sigsr_lim(1));
+xvs_srm = srm_lim(1)+u01_s(:,2)*(srm_lim(2)-srm_lim(1));
+xvs_taub1 = tau_lim(1)+u01_s(:,3)*(tau_lim(2)-tau_lim(1));
+XVs= [xvs_sigsr, xvs_srm, xvs_taub1];
+% Evaluate the computational model M as well as the metamodel M_PCE on it
+% Computational Model
+y_ED_s=M_avg_strain(xvs_sigsr,xvs_srm,xvs_taub1);
+mu_exact = mean(y_ED_s);
+var_exact = var(y_ED_s);
+t_exact = toc;
 %% Possible additional evaluation / postprocessing
+
+
+
 
 Mini_project_ADD

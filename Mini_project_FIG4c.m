@@ -20,7 +20,7 @@ end
 
 
 legend(F4c.p,leg,'Location','Southeast')  
-ylabel('PCE Response {\it y_{PCE}}')
+ylabel('PCE Response {\it y_{PCE,val}}')
 xlabel('Model Response {\it y_M}')
 hold off
 
@@ -45,8 +45,10 @@ xlim([0,0.035])
 %set(gca,'yscale','log')
 
 legend(F4c.p2,leg2,'Location','north')  
-ylabel('|{\it y_{PCE}} / {\it y_M} - 1|')
+ylabel('|{\it y_{PCE,val}} / {\it y_M} - 1|')
 xlabel('Model Response {\it y_M}')
 hold off
 
-
+% pos = get(F4c.fig,'Position');
+% set(F4c.fig,'PaperPositionMode','Auto','PaperUnits','Centimeters','PaperSize',[pos(3), pos(4)])
+% print('fig-p','-dpdf','-r600')

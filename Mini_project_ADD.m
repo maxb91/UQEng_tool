@@ -21,6 +21,12 @@ end
 set(gca,'YScale','log')
 legend(SC,{'First order','Second order','Third order','Fourth order', 'Fifth order'})
 
+%% Run the whole thing multiple times for convergence plot
+% TAKES VERY LONG TO RUN!!
+% Mini_project_CONV
+Mini_project_FIG5b
+Mini_project_FIG5c
+
 
 %% Computation times
 

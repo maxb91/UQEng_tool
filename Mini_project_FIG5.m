@@ -1,4 +1,4 @@
-% To be called within Mini_project_MAIN.m after section 2.2
+% To be called within Mini_project_MAIN.m after section 2.6
 
 F5.fig = figure('Units','Centimeters','Position',[2,2,21-5,7],...
     'Name','Comparison increasing degree');
